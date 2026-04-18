@@ -126,6 +126,7 @@ export class DashboardComponent {
 		const accent = (s: string) => theme.fg("accent", s);
 		const muted = (s: string) => theme.fg("muted", s);
 		const dim = (s: string) => theme.fg("dim", s);
+		const success = (s: string) => theme.fg("success", s);
 		const bold = (s: string) => theme.bold(s);
 
 		// Session info
