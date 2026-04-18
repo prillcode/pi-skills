@@ -2,10 +2,10 @@
  * Dashboard Extension - A TUI dashboard for pi
  *
  * Features:
- * - /dashboard - Show session stats, model info, git status, and sessions in a nice UI
- * - /todo - Simple todo list widget that persists in session
- * - Custom footer with session info
- * - Ctrl+Shift+D shortcut to open dashboard
+ * - /dashboard - Multi-tab dashboard with session stats, git, and sessions
+ * - /todo - Persistent todo list with widget
+ * - /footer - Toggle custom footer
+ * - Shortcuts: Ctrl+Shift+D (dashboard), Ctrl+Shift+T (todo widget)
  */
 
 import type { AssistantMessage } from "@mariozechner/pi-ai";
@@ -14,6 +14,7 @@ import { DynamicBorder } from "@mariozechner/pi-coding-agent";
 import {
 	Container,
 	Key,
+	Text,
 	type SelectItem,
 	SelectList,
 	visibleWidth,
@@ -22,17 +23,15 @@ import {
 import type { TodoItem } from "./types.js";
 import { DashboardComponent } from "./components/Dashboard.js";
 
-// ============================================================================
-// Extension Setup
-// ============================================================================
-
 const TODO_SAVE_TYPE = "dashboard-todos";
 
 export default function dashboardExtension(pi: ExtensionAPI) {
 	let todos: TodoItem[] = [];
+	let footerActive = false;
+	let todoWidgetVisible = true;
 
 	// ============================================================================
-	// Helper Functions
+	// Helpers
 	// ============================================================================
 
 	function loadTodos(ctx: ExtensionContext): void {
@@ -51,15 +50,14 @@ export default function dashboardExtension(pi: ExtensionAPI) {
 	}
 
 	function updateTodoWidget(ctx: ExtensionContext): void {
-		if (todos.length === 0) {
+		if (!todoWidgetVisible || todos.length === 0) {
 			ctx.ui.setWidget("dashboard-todos", undefined);
 			return;
 		}
 
-		const doneCount = todos.filter((t) => t.done).length;
 		ctx.ui.setWidget(
 			"dashboard-todos",
-			(tui, theme) => {
+			(_tui, theme) => {
 				const lines = [
 					theme.fg("accent", theme.bold("Todos")),
 					...todos.slice(0, 3).map((t) => {
@@ -84,7 +82,6 @@ export default function dashboardExtension(pi: ExtensionAPI) {
 	// Commands
 	// ============================================================================
 
-	// /dashboard command
 	pi.registerCommand("dashboard", {
 		description: "Show session dashboard",
 		handler: async (_args, ctx) => {
@@ -99,7 +96,6 @@ export default function dashboardExtension(pi: ExtensionAPI) {
 		},
 	});
 
-	// /todo command - Simple todo list using SelectList
 	pi.registerCommand("todo", {
 		description: "Manage todo list",
 		handler: async (args, ctx) => {
@@ -108,7 +104,7 @@ export default function dashboardExtension(pi: ExtensionAPI) {
 				return;
 			}
 
-			// If args provided, add as new todo
+			// Quick add
 			if (args?.trim()) {
 				todos.push({
 					id: Date.now().toString(),
@@ -167,7 +163,6 @@ export default function dashboardExtension(pi: ExtensionAPI) {
 			if (!result) return;
 
 			if (result === "add") {
-				// Quick input for new todo
 				const text = await ctx.ui.input("New todo:", "");
 				if (text?.trim()) {
 					todos.push({
@@ -180,7 +175,6 @@ export default function dashboardExtension(pi: ExtensionAPI) {
 					ctx.ui.notify("Todo added", "success");
 				}
 			} else if (result !== "none") {
-				// Toggle todo
 				const index = parseInt(result, 10);
 				if (todos[index]) {
 					todos[index].done = !todos[index].done;
@@ -192,56 +186,50 @@ export default function dashboardExtension(pi: ExtensionAPI) {
 		},
 	});
 
-	// /footer command - Toggle custom footer
 	pi.registerCommand("footer", {
 		description: "Toggle custom dashboard footer",
 		handler: async (_args, ctx) => {
-			// Check if footer is already set by looking at a flag or just toggle
-			// Since there's no getFooter method, we'll use a module-level flag
-			const footerKey = "dashboard-footer-active";
-			const isActive = (ctx as unknown as Record<string, unknown>)[footerKey] === true;
+			footerActive = !footerActive;
 
-			if (isActive) {
+			if (!footerActive) {
 				ctx.ui.setFooter(undefined);
-				(ctx as unknown as Record<string, unknown>)[footerKey] = false;
 				ctx.ui.notify("Default footer restored", "info");
-			} else {
-				ctx.ui.setFooter((tui, theme, footerData) => {
-					const unsub = footerData.onBranchChange(() => tui.requestRender());
-
-					return {
-						dispose: unsub,
-						invalidate() {},
-						render(width: number): string[] {
-							// Calculate stats
-							let input = 0,
-								output = 0,
-								cost = 0;
-							for (const e of ctx.sessionManager.getBranch()) {
-								if (e.type === "message" && e.message.role === "assistant") {
-									const m = e.message as AssistantMessage;
-									input += m.usage.input;
-									output += m.usage.output;
-									cost += m.usage.cost.total;
-								}
-							}
-
-							const branch = footerData.getGitBranch();
-							const fmt = (n: number) => (n < 1000 ? `${n}` : `${(n / 1000).toFixed(1)}k`);
-
-							const left = theme.fg("dim", `↑${fmt(input)} ↓${fmt(output)} $${cost.toFixed(3)}`);
-							const todoStatus = todos.length > 0 ? ` | ${todos.filter((t) => t.done).length}/${todos.length} ✓` : "";
-							const branchStr = branch ? ` (${branch})` : "";
-							const right = theme.fg("dim", `${ctx.model?.id || "no-model"}${branchStr}${todoStatus}`);
-
-							const pad = " ".repeat(Math.max(1, width - visibleWidth(left) - visibleWidth(right)));
-							return [truncateToWidth(left + pad + right, width)];
-						},
-					};
-				});
-				(ctx as unknown as Record<string, unknown>)[footerKey] = true;
-				ctx.ui.notify("Custom footer enabled", "info");
+				return;
 			}
+
+			ctx.ui.setFooter((tui, theme, footerData) => {
+				const unsub = footerData.onBranchChange(() => tui.requestRender());
+
+				return {
+					dispose: unsub,
+					invalidate() {},
+					render(width: number): string[] {
+						let input = 0,
+							output = 0,
+							cost = 0;
+						for (const e of ctx.sessionManager.getBranch()) {
+							if (e.type === "message" && e.message.role === "assistant") {
+								const m = e.message as AssistantMessage;
+								input += m.usage.input;
+								output += m.usage.output;
+								cost += m.usage.cost.total;
+							}
+						}
+
+						const branch = footerData.getGitBranch();
+						const fmt = (n: number) => (n < 1000 ? `${n}` : `${(n / 1000).toFixed(1)}k`);
+
+						const left = theme.fg("dim", `↑${fmt(input)} ↓${fmt(output)} $${cost.toFixed(3)}`);
+						const todoStatus = todos.length > 0 ? ` | ${todos.filter((t) => t.done).length}/${todos.length} ✓` : "";
+						const branchStr = branch ? ` (${branch})` : "";
+						const right = theme.fg("dim", `${ctx.model?.id || "no-model"}${branchStr}${todoStatus}`);
+
+						const pad = " ".repeat(Math.max(1, width - visibleWidth(left) - visibleWidth(right)));
+						return [truncateToWidth(left + pad + right, width)];
+					},
+				};
+			});
+			ctx.ui.notify("Custom footer enabled", "info");
 		},
 	});
 
@@ -256,20 +244,26 @@ export default function dashboardExtension(pi: ExtensionAPI) {
 		},
 	});
 
+	pi.registerShortcut(Key.ctrlShift("t"), {
+		description: "Toggle todo widget",
+		handler: async (ctx) => {
+			todoWidgetVisible = !todoWidgetVisible;
+			updateTodoWidget(ctx);
+			ctx.ui.notify(todoWidgetVisible ? "Todo widget visible" : "Todo widget hidden", "info");
+		},
+	});
+
 	// ============================================================================
-	// Event Handlers
+	// Events
 	// ============================================================================
 
 	pi.on("session_start", async (_event, ctx) => {
 		loadTodos(ctx);
 		updateTodoWidget(ctx);
-
-		// Show welcome message
-		ctx.ui.notify("Dashboard extension loaded. Try /dashboard, /todo, or /footer", "info");
+		ctx.ui.notify("Dashboard loaded • /dashboard /todo /footer • Ctrl+Shift+D", "info");
 	});
 
 	pi.on("turn_end", async (_event, ctx) => {
-		// Update widget after each turn (stats may have changed)
 		updateTodoWidget(ctx);
 	});
 }
