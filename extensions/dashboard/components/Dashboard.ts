@@ -8,13 +8,15 @@ import { Key, matchesKey, visibleWidth, truncateToWidth } from "@mariozechner/pi
 import type { TodoItem, DashboardTab } from "../types.js";
 import { GitPanel } from "./GitPanel.js";
 import { SessionPanel } from "./SessionPanel.js";
+import { BrainPanel } from "./BrainPanel.js";
 
 const TABS: { key: DashboardTab; label: string; shortcut: string }[] = [
 	{ key: "overview", label: "Overview", shortcut: "1" },
-	{ key: "todos", label: "Todos", shortcut: "2" },
+	{ key: "todos", label: "Tasks", shortcut: "2" },
 	{ key: "stats", label: "Stats", shortcut: "3" },
 	{ key: "git", label: "Git", shortcut: "4" },
 	{ key: "sessions", label: "Sessions", shortcut: "5" },
+	{ key: "brain", label: "Brain", shortcut: "6" },
 ];
 
 export class DashboardComponent {
@@ -28,6 +30,7 @@ export class DashboardComponent {
 	private cachedWidth = 0;
 	private gitPanel: GitPanel;
 	private sessionPanel: SessionPanel;
+	private brainPanel: BrainPanel;
 
 	constructor(
 		tui: { requestRender: () => void },
@@ -44,6 +47,10 @@ export class DashboardComponent {
 			this.tui.requestRender();
 		});
 		this.sessionPanel = new SessionPanel(ctx, () => {
+			this.invalidate();
+			this.tui.requestRender();
+		});
+		this.brainPanel = new BrainPanel(ctx, () => {
 			this.invalidate();
 			this.tui.requestRender();
 		});
@@ -94,6 +101,7 @@ export class DashboardComponent {
 		if (data === "3") return this.switchTab("stats");
 		if (data === "4") return this.switchTab("git");
 		if (data === "5") return this.switchTab("sessions");
+		if (data === "6") return this.switchTab("brain");
 
 		// Tab-specific actions
 		if (this.selectedTab === "git") {
@@ -105,6 +113,18 @@ export class DashboardComponent {
 		} else if (this.selectedTab === "sessions") {
 			if (data === "s" || data === "S") void this.sessionPanel.handleAction("switch");
 			else if (data === "b" || data === "B") void this.sessionPanel.handleAction("bookmark");
+		} else if (this.selectedTab === "brain") {
+			if (this.brainPanel.isViewing()) {
+				if (data === "b" || data === "B" || matchesKey(data, Key.escape)) {
+					this.brainPanel.handleAction("back");
+				}
+			} else {
+				// Number keys 0-9 to view files
+				const num = parseInt(data, 10);
+				if (!isNaN(num) && num >= 0) {
+					void this.brainPanel.viewFile(num);
+				}
+			}
 		}
 	}
 
@@ -281,7 +301,7 @@ export class DashboardComponent {
 		// Todo summary
 		const doneCount = this.todos.filter((t) => t.done).length;
 		const totalCount = this.todos.length;
-		lines.push(`  ${bold(accent("Todos"))}`);
+		lines.push(`  ${bold(accent("Tasks"))}`);
 		lines.push(`    ${success(String(doneCount))}${dim("/")}${muted(String(totalCount))} completed`);
 
 		return lines;
@@ -303,7 +323,7 @@ export class DashboardComponent {
 			return lines;
 		}
 
-		lines.push(`  ${bold(accent("Your Todos"))}`);
+		lines.push(`  ${bold(accent("Your Tasks"))}`);
 		lines.push("");
 
 		for (const todo of this.todos) {

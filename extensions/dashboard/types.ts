@@ -12,4 +12,4 @@ export interface DashboardState {
 	todos: TodoItem[];
 }
 
-export type DashboardTab = "overview" | "todos" | "stats" | "git" | "sessions";
+export type DashboardTab = "overview" | "todos" | "stats" | "git" | "sessions" | "brain";
