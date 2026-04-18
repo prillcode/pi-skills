@@ -1,4 +1,4 @@
-//**
+/**
  * GitPanel Component - Git integration UI
  */
 
