@@ -6,6 +6,8 @@ import type { AssistantMessage } from "@mariozechner/pi-ai";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Key, matchesKey, visibleWidth, truncateToWidth } from "@mariozechner/pi-tui";
 import type { TodoItem, DashboardTab } from "../types.js";
+import { GitPanel } from "./GitPanel.js";
+import { SessionPanel } from "./SessionPanel.js";
 
 export class DashboardComponent {
 	private ctx: ExtensionContext;
@@ -16,6 +18,8 @@ export class DashboardComponent {
 	private cachedLines: string[] = [];
 	private cachedWidth = 0;
 	private version = 0;
+	private gitPanel: GitPanel;
+	private sessionPanel: SessionPanel;
 
 	constructor(
 		tui: { requestRender: () => void },
@@ -27,6 +31,14 @@ export class DashboardComponent {
 		this.ctx = ctx;
 		this.onClose = onClose;
 		this.todos = todos;
+		this.gitPanel = new GitPanel(ctx, () => {
+			this.version++;
+			this.tui.requestRender();
+		});
+		this.sessionPanel = new SessionPanel(ctx, () => {
+			this.version++;
+			this.tui.requestRender();
+		});
 	}
 
 	handleInput(data: string): void {
@@ -49,12 +61,34 @@ export class DashboardComponent {
 			this.tui.requestRender();
 		} else if (matchesKey(data, "4")) {
 			this.selectedTab = "git";
+			this.gitPanel.refresh();
 			this.version++;
 			this.tui.requestRender();
 		} else if (matchesKey(data, "5")) {
 			this.selectedTab = "sessions";
+			void this.sessionPanel.refresh();
 			this.version++;
 			this.tui.requestRender();
+		} else if (this.selectedTab === "git") {
+			// Git panel actions
+			if (data === "c" || data === "C") {
+				void this.gitPanel.handleAction("checkout");
+			} else if (data === "n" || data === "N") {
+				void this.gitPanel.handleAction("create");
+			} else if (data === "d" || data === "D") {
+				void this.gitPanel.handleAction("delete");
+			} else if (data === "s" || data === "S") {
+				void this.gitPanel.handleAction("stage");
+			} else if (data === "u" || data === "U") {
+				void this.gitPanel.handleAction("unstage");
+			}
+		} else if (this.selectedTab === "sessions") {
+			// Session panel actions
+			if (data === "s" || data === "S") {
+				void this.sessionPanel.handleAction("switch");
+			} else if (data === "b" || data === "B") {
+				void this.sessionPanel.handleAction("bookmark");
+			}
 		}
 	}
 
@@ -103,16 +137,22 @@ export class DashboardComponent {
 				lines.push(...this.renderStats(width));
 				break;
 			case "git":
-				lines.push(...this.renderGitPlaceholder(width));
+				lines.push(...this.gitPanel.render(theme, width));
 				break;
 			case "sessions":
-				lines.push(...this.renderSessionsPlaceholder(width));
+				lines.push(...this.sessionPanel.render(theme, width));
 				break;
 		}
 
 		// Footer hint
 		lines.push("");
-		lines.push(this.centerLine(dim("1-5 switch tabs • Q/ESC close"), width));
+		if (this.selectedTab === "git") {
+			lines.push(this.centerLine(dim("1-5 tabs • C-checkout • N-new • D-delete • S-stage • U-unstage • Q-close"), width));
+		} else if (this.selectedTab === "sessions") {
+			lines.push(this.centerLine(dim("1-5 tabs • S-switch • B-bookmark • Q-close"), width));
+		} else {
+			lines.push(this.centerLine(dim("1-5 switch tabs • Q/ESC close"), width));
+		}
 
 		this.cachedLines = lines;
 		this.cachedWidth = width;
@@ -241,45 +281,7 @@ export class DashboardComponent {
 		return lines;
 	}
 
-	private renderGitPlaceholder(width: number): string[] {
-		const theme = this.ctx.ui.theme;
-		const lines: string[] = [];
 
-		const accent = (s: string) => theme.fg("accent", s);
-		const dim = (s: string) => theme.fg("dim", s);
-		const bold = (s: string) => theme.bold(s);
-
-		lines.push(bold(accent("Git")));
-		lines.push("");
-		lines.push(dim("  Git integration coming in Phase 02."));
-		lines.push(dim("  This tab will show:"));
-		lines.push(dim("    • Repository status"));
-		lines.push(dim("    • Recent commits"));
-		lines.push(dim("    • Branch management"));
-		lines.push(dim("    • File staging/unstaging"));
-
-		return lines;
-	}
-
-	private renderSessionsPlaceholder(width: number): string[] {
-		const theme = this.ctx.ui.theme;
-		const lines: string[] = [];
-
-		const accent = (s: string) => theme.fg("accent", s);
-		const dim = (s: string) => theme.fg("dim", s);
-		const bold = (s: string) => theme.bold(s);
-
-		lines.push(bold(accent("Sessions")));
-		lines.push("");
-		lines.push(dim("  Session management coming in Phase 03."));
-		lines.push(dim("  This tab will show:"));
-		lines.push(dim("    • List of pi sessions"));
-		lines.push(dim("    • Quick session switching"));
-		lines.push(dim("    • Session bookmarks"));
-		lines.push(dim("    • Token usage per session"));
-
-		return lines;
-	}
 
 	private centerLine(line: string, width: number): string {
 		const visibleLen = visibleWidth(line);
