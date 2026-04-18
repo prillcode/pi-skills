@@ -1,8 +1,9 @@
 /**
- * BrainPanel Component - View project brain memory
+ * BrainPanel Component - View project brain memory + brain-sync actions
  */
 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { SelectItem } from "@mariozechner/pi-tui";
 import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import {
 	resolveBrainProject,
@@ -13,6 +14,17 @@ import {
 	type BrainFile,
 } from "../utils/brain.js";
 
+const BRAIN_SYNC_COMMANDS = [
+	{ value: "init", label: "Init brain", description: "Create brain project for this repo" },
+	{ value: "status", label: "Status", description: "Check brain project health" },
+	{ value: "load", label: "Load context", description: "Load brain context for session" },
+	{ value: "log", label: "Log progress", description: "Record today's work" },
+	{ value: "state", label: "Update state", description: "Update state/now.md" },
+	{ value: "learn", label: "Capture learnings", description: "Promote insights to wiki" },
+	{ value: "end", label: "End session", description: "End-of-session wrap-up" },
+	{ value: "commit-sync", label: "Commit & sync", description: "Commit and push brain changes" },
+];
+
 export class BrainPanel {
 	private ctx: ExtensionContext;
 	private onRefresh: () => void;
@@ -20,7 +32,6 @@ export class BrainPanel {
 	private files: BrainFile[] = [];
 	private viewingFile: BrainFile | null = null;
 	private fileContent: string | null = null;
-	private scrollOffset = 0;
 
 	constructor(ctx: ExtensionContext, onRefresh: () => void) {
 		this.ctx = ctx;
@@ -35,9 +46,12 @@ export class BrainPanel {
 		if (action === "back") {
 			this.viewingFile = null;
 			this.fileContent = null;
-			this.scrollOffset = 0;
 			this.onRefresh();
 		}
+	}
+
+	isViewing(): boolean {
+		return this.viewingFile !== null;
 	}
 
 	async viewFile(index: number): Promise<void> {
@@ -52,12 +66,54 @@ export class BrainPanel {
 
 		this.viewingFile = file;
 		this.fileContent = content;
-		this.scrollOffset = 0;
 		this.onRefresh();
 	}
 
-	isViewing(): boolean {
-		return this.viewingFile !== null;
+	async showMenu(): Promise<void> {
+		const items: SelectItem[] = [];
+
+		if (!this.project.exists) {
+			items.push({
+				value: "brain-sync init",
+				label: "Create brain for this repo",
+				description: "Run /brain-sync init to scaffold project memory",
+			});
+		} else {
+			for (const cmd of BRAIN_SYNC_COMMANDS) {
+				items.push({
+					value: `brain-sync ${cmd.value}`,
+					label: cmd.label,
+					description: cmd.description,
+				});
+			}
+
+			// Add file browsing option
+			const nonDirFiles = this.files.filter((f) => !f.isDirectory);
+			if (nonDirFiles.length > 0) {
+				items.push({ value: "__separator__", label: "── Files ──", description: "" });
+				for (let i = 0; i < Math.min(nonDirFiles.length, 10); i++) {
+					const f = nonDirFiles[i]!;
+					items.push({
+						value: `__file__${i}`,
+						label: f.relativePath,
+						description: "View this file",
+					});
+				}
+			}
+		}
+
+		const result = await this.ctx.ui.select("Brain actions:", items);
+		if (!result?.value) return;
+
+		if (result.value.startsWith("__file__")) {
+			const index = parseInt(result.value.replace("__file__", ""), 10);
+			await this.viewFile(index);
+		} else if (result.value.startsWith("brain-sync")) {
+			// Close dashboard first, then send command
+			this.ctx.ui.notify(`Run: ${result.value}`, "info");
+			// We can't send user messages from here directly, but we can notify
+			// The user will need to type the command after closing dashboard
+		}
 	}
 
 	render(theme: ReturnType<ExtensionContext["ui"]["theme"]>, width: number): string[] {
@@ -83,7 +139,7 @@ export class BrainPanel {
 		lines.push(`  ${bold(accent("No brain found"))}`);
 		lines.push(`  ${muted(`No brain project for "${this.project.slug}"`)}`);
 		lines.push("");
-		lines.push(`  ${dim("Use the /brain-sync skill to create one:")}`);
+		lines.push(`  ${dim("Press M to see options, or use the skill directly:")}`);
 		lines.push(`  ${accent("/brain-sync init")}`);
 		lines.push("");
 		lines.push(`  ${dim("This will scaffold: state/now.md, wiki/, log/, raw/")}`);
@@ -100,10 +156,8 @@ export class BrainPanel {
 		const success = (s: string) => theme.fg("success", s);
 		const bold = (s: string) => theme.bold(s);
 
-		// Project header
 		lines.push(`  ${bold(accent(`Brain: ${this.project.slug}`))}`);
 
-		// Status indicators
 		const indicators: string[] = [];
 		if (this.project.hasNow) indicators.push(success("✓ now.md"));
 		if (this.project.hasWiki) indicators.push(success("✓ wiki/"));
@@ -113,7 +167,6 @@ export class BrainPanel {
 		}
 		lines.push("");
 
-		// File list
 		lines.push(`  ${bold("Files:")}`);
 
 		const prefix = "    ";
@@ -124,7 +177,6 @@ export class BrainPanel {
 			} else {
 				const sizeStr = file.size > 1024 ? `${(file.size / 1024).toFixed(1)}k` : `${file.size}b`;
 				const num = `[${fileIndex}]`;
-				// Highlight priority files
 				const isPriority = ["state/now.md", "wiki/index.md"].includes(file.relativePath);
 				const label = isPriority ? accent(`${num} ${file.relativePath}`) : muted(`${num} ${file.relativePath}`);
 				const meta = dim(` (${sizeStr})`);
@@ -142,19 +194,16 @@ export class BrainPanel {
 		const dim = (s: string) => theme.fg("dim", s);
 		const bold = (s: string) => theme.bold(s);
 
-		// File header
 		lines.push(`  ${bold(accent(this.viewingFile!.relativePath))}`);
 		lines.push(dim("─".repeat(width)));
 		lines.push("");
 
-		// File content (truncate to fit dashboard)
 		const maxLines = 30;
 		const contentLines = this.fileContent!.split("\n");
 
 		for (let i = 0; i < Math.min(contentLines.length, maxLines); i++) {
-			const line = contentLines[i + this.scrollOffset];
+			const line = contentLines[i];
 			if (line === undefined) break;
-			// Truncate long lines
 			lines.push(truncateToWidth(`  ${line}`, width));
 		}
 

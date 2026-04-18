@@ -3,13 +3,7 @@
  */
 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import {
-	Container,
-	Text,
-	type SelectItem,
-	SelectList,
-	DynamicBorder,
-} from "@mariozechner/pi-tui";
+import { type SelectItem } from "@mariozechner/pi-tui";
 import {
 	getGitStatus,
 	getRecentCommits,
@@ -28,13 +22,8 @@ export class GitPanel {
 	private ctx: ExtensionContext;
 	private onRefresh: () => void;
 	private status: GitStatus = {
-		isRepo: false,
-		branch: "",
-		ahead: 0,
-		behind: 0,
-		modified: [],
-		staged: [],
-		untracked: [],
+		isRepo: false, branch: "", ahead: 0, behind: 0,
+		modified: [], staged: [], untracked: [],
 	};
 	private commits: GitCommit[] = [];
 	private branches: { name: string; current: boolean }[] = [];
@@ -52,7 +41,6 @@ export class GitPanel {
 			this.branches = [];
 			return;
 		}
-
 		this.status = getGitStatus(this.ctx.cwd);
 		this.commits = getRecentCommits(this.ctx.cwd, 10);
 		this.branches = getBranches(this.ctx.cwd);
@@ -60,21 +48,27 @@ export class GitPanel {
 
 	async handleAction(action: string): Promise<void> {
 		switch (action) {
-			case "checkout":
-				await this.checkoutFlow();
-				break;
-			case "create":
-				await this.createFlow();
-				break;
-			case "delete":
-				await this.deleteFlow();
-				break;
-			case "stage":
-				await this.stageFlow();
-				break;
-			case "unstage":
-				await this.unstageFlow();
-				break;
+			case "checkout": await this.checkoutFlow(); break;
+			case "create": await this.createFlow(); break;
+			case "delete": await this.deleteFlow(); break;
+			case "stage": await this.stageFlow(); break;
+			case "unstage": await this.unstageFlow(); break;
+			case "menu": await this.showMenu(); break;
+		}
+	}
+
+	private async showMenu(): Promise<void> {
+		const items: SelectItem[] = [
+			{ value: "checkout", label: "Switch branch", description: "Checkout a different branch" },
+			{ value: "create", label: "Create branch", description: "Create and switch to a new branch" },
+			{ value: "delete", label: "Delete branch", description: "Delete a local branch" },
+			{ value: "stage", label: "Stage file", description: "Stage a modified or untracked file" },
+			{ value: "unstage", label: "Unstage file", description: "Remove a file from staging" },
+		];
+
+		const result = await this.ctx.ui.select("Git actions:", items);
+		if (result?.value) {
+			await this.handleAction(result.value);
 		}
 	}
 
@@ -92,11 +86,11 @@ export class GitPanel {
 		}));
 
 		const result = await this.ctx.ui.select("Checkout branch:", items);
-		if (!result) return;
+		if (!result?.value) return;
 
 		try {
-			checkoutBranch(this.ctx.cwd, result);
-			this.ctx.ui.notify(`Switched to branch: ${result}`, "success");
+			checkoutBranch(this.ctx.cwd, result.value);
+			this.ctx.ui.notify(`Switched to branch: ${result.value}`, "success");
 			this.refresh();
 			this.onRefresh();
 		} catch (error) {
@@ -132,24 +126,23 @@ export class GitPanel {
 		}));
 
 		const result = await this.ctx.ui.select("Delete branch:", items);
-		if (!result) return;
+		if (!result?.value) return;
 
-		const ok = await this.ctx.ui.confirm("Delete branch?", `Delete ${result}? This cannot be undone.`);
+		const ok = await this.ctx.ui.confirm("Delete branch?", `Delete ${result.value}? This cannot be undone.`);
 		if (!ok) return;
 
 		try {
-			deleteBranch(this.ctx.cwd, result, false);
-			this.ctx.ui.notify(`Deleted branch: ${result}`, "success");
+			deleteBranch(this.ctx.cwd, result.value, false);
+			this.ctx.ui.notify(`Deleted branch: ${result.value}`, "success");
 			this.refresh();
 			this.onRefresh();
 		} catch {
-			// Try force delete if regular delete fails
 			const force = await this.ctx.ui.confirm("Force delete?", "Branch may be unmerged. Force delete?");
 			if (!force) return;
 
 			try {
-				deleteBranch(this.ctx.cwd, result, true);
-				this.ctx.ui.notify(`Force deleted branch: ${result}`, "success");
+				deleteBranch(this.ctx.cwd, result.value, true);
+				this.ctx.ui.notify(`Force deleted branch: ${result.value}`, "success");
 				this.refresh();
 				this.onRefresh();
 			} catch (error) {
@@ -172,11 +165,11 @@ export class GitPanel {
 		}));
 
 		const result = await this.ctx.ui.select("Stage file:", items);
-		if (!result) return;
+		if (!result?.value) return;
 
 		try {
-			stageFile(this.ctx.cwd, result);
-			this.ctx.ui.notify(`Staged: ${result}`, "success");
+			stageFile(this.ctx.cwd, result.value);
+			this.ctx.ui.notify(`Staged: ${result.value}`, "success");
 			this.refresh();
 			this.onRefresh();
 		} catch (error) {
@@ -197,11 +190,11 @@ export class GitPanel {
 		}));
 
 		const result = await this.ctx.ui.select("Unstage file:", items);
-		if (!result) return;
+		if (!result?.value) return;
 
 		try {
-			unstageFile(this.ctx.cwd, result);
-			this.ctx.ui.notify(`Unstaged: ${result}`, "success");
+			unstageFile(this.ctx.cwd, result.value);
+			this.ctx.ui.notify(`Unstaged: ${result.value}`, "success");
 			this.refresh();
 			this.onRefresh();
 		} catch (error) {
@@ -236,10 +229,6 @@ export class GitPanel {
 		lines.push(`    ${warning(String(this.status.modified.length))} ${muted("modified")}`);
 		lines.push(`    ${success(String(this.status.staged.length))} ${muted("staged")}`);
 		lines.push(`    ${dim(String(this.status.untracked.length))} ${muted("untracked")}`);
-		lines.push("");
-
-		// Quick actions hint
-		lines.push(`  ${dim("Actions: C-checkout branch | N-new branch | D-delete branch | S-stage | U-unstage")}`);
 		lines.push("");
 
 		// Recent commits

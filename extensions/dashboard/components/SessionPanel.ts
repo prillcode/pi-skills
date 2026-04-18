@@ -5,141 +5,166 @@
 import type { ExtensionContext, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
 import type { SelectItem } from "@mariozechner/pi-tui";
 import {
-  listSessions,
-  formatSessionName,
-  getRelativeTime,
-  type SessionInfo,
+	listSessions,
+	formatSessionName,
+	getRelativeTime,
+	type SessionInfo,
 } from "../utils/sessions.js";
 
 export class SessionPanel {
-  private ctx: ExtensionContext;
-  private onRefresh: () => void;
-  private sessions: SessionInfo[] = [];
-  private isLoading = true;
+	private ctx: ExtensionContext;
+	private onRefresh: () => void;
+	private sessions: SessionInfo[] = [];
+	private isLoading = true;
 
-  constructor(ctx: ExtensionContext, onRefresh: () => void) {
-    this.ctx = ctx;
-    this.onRefresh = onRefresh;
-    void this.refresh();
-  }
+	constructor(ctx: ExtensionContext, onRefresh: () => void) {
+		this.ctx = ctx;
+		this.onRefresh = onRefresh;
+		void this.refresh();
+	}
 
-  async refresh(): Promise<void> {
-    this.isLoading = true;
-    try {
-      this.sessions = await listSessions(this.ctx.cwd);
-      // Sort by bookmarked first, then by date
-      this.sessions.sort((a, b) => {
-        if (a.isBookmarked && !b.isBookmarked) return -1;
-        if (!a.isBookmarked && b.isBookmarked) return 1;
-        return b.created.getTime() - a.created.getTime();
-      });
-    } catch {
-      this.sessions = [];
-    }
-    this.isLoading = false;
-    this.onRefresh();
-  }
+	async refresh(): Promise<void> {
+		this.isLoading = true;
+		try {
+			this.sessions = await listSessions(this.ctx.cwd);
+			this.sessions.sort((a, b) => {
+				if (a.isBookmarked && !b.isBookmarked) return -1;
+				if (!a.isBookmarked && b.isBookmarked) return 1;
+				return b.created.getTime() - a.created.getTime();
+			});
+		} catch {
+			this.sessions = [];
+		}
+		this.isLoading = false;
+		this.onRefresh();
+	}
 
-  async handleAction(action: string): Promise<void> {
-    switch (action) {
-      case "switch":
-        await this.switchFlow();
-        break;
-      case "bookmark":
-        this.ctx.ui.notify("Bookmark feature coming soon", "info");
-        break;
-    }
-  }
+	async handleAction(action: string): Promise<void> {
+		switch (action) {
+			case "switch":
+				await this.switchFlow(false);
+				break;
+			case "switch_new":
+				await this.switchFlow(true);
+				break;
+			case "menu":
+				await this.showMenu();
+				break;
+		}
+	}
 
-  private async switchFlow(): Promise<void> {
-    if (this.sessions.length === 0) {
-      this.ctx.ui.notify("No sessions available", "warning");
-      return;
-    }
+	private async showMenu(): Promise<void> {
+		const items: SelectItem[] = [
+			{ value: "switch", label: "Switch session", description: "Switch to another session in this window" },
+			{ value: "switch_new", label: "Open in new terminal", description: "Open session in a separate pi process" },
+		];
 
-    const items: SelectItem[] = this.sessions.map((s) => ({
-      value: s.file,
-      label: `${s.isCurrent ? "● " : "  "}${s.name}${s.isBookmarked ? " ★" : ""}`,
-      description: `${getRelativeTime(s.created)} · ${s.messageCount} msgs · ${s.tokenCount.toLocaleString()} tokens`,
-    }));
+		const result = await this.ctx.ui.select("Session actions:", items);
+		if (result?.value) {
+			await this.handleAction(result.value);
+		}
+	}
 
-    const result = await this.ctx.ui.select("Switch to session:", items);
-    if (!result) return;
+	private async switchFlow(openNew: boolean): Promise<void> {
+		if (this.sessions.length === 0) {
+			this.ctx.ui.notify("No sessions available", "warning");
+			return;
+		}
 
-    // Check if it's the current session
-    const selected = this.sessions.find((s) => s.file === result);
-    if (selected?.isCurrent) {
-      this.ctx.ui.notify("Already in this session", "info");
-      return;
-    }
+		const items: SelectItem[] = this.sessions.map((s) => ({
+			value: s.file,
+			label: `${s.isCurrent ? "● " : "  "}${s.name}${s.isBookmarked ? " ★" : ""}`,
+			description: `${getRelativeTime(s.created)} · ${s.messageCount} msgs · ${s.tokenCount.toLocaleString()} tokens`,
+		}));
 
-    try {
-      // Use the command context to switch sessions
-      const cmdCtx = this.ctx as unknown as ExtensionCommandContext;
-      if (cmdCtx.switchSession) {
-        await cmdCtx.switchSession(result);
-        this.ctx.ui.notify("Switched session", "success");
-      } else {
-        this.ctx.ui.notify("Session switching not available in this context", "error");
-      }
-    } catch (error) {
-      this.ctx.ui.notify(`Failed to switch session: ${error}`, "error");
-    }
-  }
+		const result = await this.ctx.ui.select(
+			openNew ? "Open session in new terminal:" : "Switch to session:",
+			items,
+		);
+		if (!result?.value) return;
 
-  render(theme: ReturnType<ExtensionContext["ui"]["theme"]>, _width: number): string[] {
-    const lines: string[] = [];
-    const accent = (s: string) => theme.fg("accent", s);
-    const muted = (s: string) => theme.fg("muted", s);
-    const dim = (s: string) => theme.fg("dim", s);
-    const bold = (s: string) => theme.bold(s);
+		const selected = this.sessions.find((s) => s.file === result!.value);
+		if (selected?.isCurrent) {
+			this.ctx.ui.notify("Already in this session", "info");
+			return;
+		}
 
-    if (this.isLoading) {
-      lines.push("", "  Loading sessions...", "");
-      return lines;
-    }
+		if (openNew) {
+			// Launch new terminal with pi session
+			const { exec } = await import("node:child_process");
+			const terminal = process.env.TERMINAL || "alacritty";
+			try {
+				exec(`${terminal} -e pi --session "${result.value}" &`, (err) => {
+					if (err) this.ctx.ui.notify(`Failed to launch terminal: ${err.message}`, "error");
+				});
+				this.ctx.ui.notify(`Opened session in new terminal`, "success");
+			} catch (error) {
+				this.ctx.ui.notify(`Failed to launch: ${error}`, "error");
+			}
+			return;
+		}
 
-    if (this.sessions.length === 0) {
-      lines.push("", "  No sessions found", "");
-      return lines;
-    }
+		try {
+			const cmdCtx = this.ctx as unknown as ExtensionCommandContext;
+			if (cmdCtx.switchSession) {
+				await cmdCtx.switchSession(result.value);
+				this.ctx.ui.notify("Switched session", "success");
+			} else {
+				this.ctx.ui.notify("Session switching not available in this context", "error");
+			}
+		} catch (error) {
+			this.ctx.ui.notify(`Failed to switch session: ${error}`, "error");
+		}
+	}
 
-    // Summary stats
-    const totalTokens = this.sessions.reduce((sum, s) => sum + s.tokenCount, 0);
-    const totalCost = this.sessions.reduce((sum, s) => sum + s.cost, 0);
-    const current = this.sessions.find((s) => s.isCurrent);
+	render(theme: ReturnType<ExtensionContext["ui"]["theme"]>, _width: number): string[] {
+		const lines: string[] = [];
+		const accent = (s: string) => theme.fg("accent", s);
+		const muted = (s: string) => theme.fg("muted", s);
+		const dim = (s: string) => theme.fg("dim", s);
+		const bold = (s: string) => theme.bold(s);
 
-    lines.push(`  ${bold(accent("Sessions"))} ${muted(String(this.sessions.length))} ${dim("(this repo)")}`);
-    lines.push(`  ${bold("Total Tokens:")} ${muted(totalTokens.toLocaleString())}`);
-    lines.push(`  ${bold("Total Cost:")} ${muted(`$${totalCost.toFixed(3)}`)}`);
-    lines.push("");
+		if (this.isLoading) {
+			lines.push("", "  Loading sessions...", "");
+			return lines;
+		}
 
-    // Current session
-    if (current) {
-      lines.push(`  ${bold(accent("Current Session:"))}`);
-      lines.push(`    ${accent("●")} ${current.name}`);
-      lines.push(`      ${dim(`${getRelativeTime(current.created)} · ${current.messageCount} messages`)}`);
-      lines.push("");
-    }
+		if (this.sessions.length === 0) {
+			lines.push("", "  No sessions found", "");
+			return lines;
+		}
 
-    // Recent sessions (up to 6)
-    lines.push(`  ${bold(accent("Recent Sessions:"))}`);
-    const recent = this.sessions.filter((s) => !s.isCurrent).slice(0, 6);
+		// Summary
+		const totalTokens = this.sessions.reduce((sum, s) => sum + s.tokenCount, 0);
+		const totalCost = this.sessions.reduce((sum, s) => sum + s.cost, 0);
+		const current = this.sessions.find((s) => s.isCurrent);
 
-    for (const session of recent) {
-      const marker = session.isBookmarked ? "★ " : "  ";
-      const name = formatSessionName(session.file).slice(0, 30);
-      lines.push(`    ${dim(marker)}${muted(name)}`);
-      lines.push(`      ${dim(`${getRelativeTime(session.created)} · ${session.messageCount} msgs · ${session.tokenCount.toLocaleString()} tokens`)}`);
-    }
+		lines.push(`  ${bold(accent("Sessions"))} ${muted(String(this.sessions.length))} ${dim("(this repo)")}`);
+		lines.push(`  ${bold("Total:")} ${muted(totalTokens.toLocaleString())} tokens · ${muted(`$${totalCost.toFixed(3)}`)}`);
+		lines.push("");
 
-    if (this.sessions.length > 7) {
-      lines.push(`    ${dim(`...and ${this.sessions.length - 7} more`)}`);
-    }
+		if (current) {
+			lines.push(`  ${bold(accent("Current:"))}`);
+			lines.push(`    ${accent("●")} ${current.name}`);
+			lines.push(`      ${dim(`${getRelativeTime(current.created)} · ${current.messageCount} messages`)}`);
+			lines.push("");
+		}
 
-    lines.push("");
-    lines.push(`  ${dim("Actions: S-switch session • B-toggle bookmark")}`);
+		// Recent sessions
+		const recent = this.sessions.filter((s) => !s.isCurrent).slice(0, 6);
+		if (recent.length > 0) {
+			lines.push(`  ${bold(accent("Recent:"))}`);
+			for (const session of recent) {
+				const marker = session.isBookmarked ? "★ " : "  ";
+				const name = formatSessionName(session.file).slice(0, 30);
+				lines.push(`    ${dim(marker)}${muted(name)}`);
+				lines.push(`      ${dim(`${getRelativeTime(session.created)} · ${session.messageCount} msgs · ${session.tokenCount.toLocaleString()} tokens`)}`);
+			}
+			if (this.sessions.length > 7) {
+				lines.push(`    ${dim(`...and ${this.sessions.length - 7} more`)}`);
+			}
+		}
 
-    return lines;
-  }
+		return lines;
+	}
 }

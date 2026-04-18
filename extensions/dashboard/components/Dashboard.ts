@@ -99,7 +99,18 @@ export class DashboardComponent {
 		if (data === "5") return this.switchTab("info");
 
 		// Tab-specific actions
-		if (this.selectedTab === "git") {
+		// M = menu on any tab
+		if (data === "m" || data === "M") {
+			if (this.selectedTab === "tasks") void this.tasksMenu();
+			else if (this.selectedTab === "sessions") void this.sessionPanel.handleAction("menu");
+			else if (this.selectedTab === "git") void this.gitPanel.handleAction("menu");
+			else if (this.selectedTab === "brain") void this.brainPanel.showMenu();
+			return;
+		}
+
+		if (this.selectedTab === "tasks") {
+			if (data === "a" || data === "A") void this.addTask();
+		} else if (this.selectedTab === "git") {
 			if (data === "c" || data === "C") void this.gitPanel.handleAction("checkout");
 			else if (data === "n" || data === "N") void this.gitPanel.handleAction("create");
 			else if (data === "d" || data === "D") void this.gitPanel.handleAction("delete");
@@ -120,7 +131,6 @@ export class DashboardComponent {
 				}
 			}
 		}
-	}
 
 	private switchTab(tab: DashboardTab): void {
 		this.selectedTab = tab;
@@ -128,6 +138,34 @@ export class DashboardComponent {
 		if (tab === "sessions") void this.sessionPanel.refresh();
 		this.invalidate();
 		this.tui.requestRender();
+	}
+
+	// ========================================================================
+	// Tasks helpers
+	// ========================================================================
+
+	private async tasksMenu(): Promise<void> {
+		const items: { value: string; label: string; description: string }[] = [
+			{ value: "add", label: "Add task", description: "Create a new task" },
+			{ value: "manage", label: "Manage tasks", description: "Toggle or delete tasks via /task" },
+		];
+		const result = await this.ctx.ui.select("Task actions:", items);
+		if (!result?.value) return;
+		if (result.value === "add") await this.addTask();
+		else if (result.value === "manage") {
+			this.onClose();
+			// Use sendUserMessage to trigger /task after dashboard closes
+			this.ctx.ui.notify("Closing dashboard — type /task to manage tasks", "info");
+		}
+	}
+
+	private async addTask(): Promise<void> {
+		const text = await this.ctx.ui.input("New task:", "");
+		if (!text?.trim()) return;
+		this.todos.push({ id: Date.now().toString(), text: text.trim(), done: false });
+		this.invalidate();
+		this.tui.requestRender();
+		this.ctx.ui.notify(`Task added: ${text.trim()}`, "success");
 	}
 
 	invalidate(): void {
@@ -203,10 +241,10 @@ export class DashboardComponent {
 		}
 
 		const hints: Record<string, string> = {
-			tasks: "←→ tabs • ? help • Q close",
-			sessions: "S-switch • B-bookmark • ? help • Q close",
-			git: "C-checkout • N-new • D-delete • S-stage • U-unstage • ? help",
-			brain: "0-9 view file • B-back • ? help • Q close",
+			tasks: "A-add task • M-menu • ? help • Q close",
+			sessions: "S-switch • M-menu • ? help • Q close",
+			git: "C-checkout • N-new • D-delete • S-stage • U-unstage • M-menu",
+			brain: "0-9 view file • B-back • M-menu • ? help • Q close",
 			info: "←→ tabs • ? help • Q close",
 		};
 
@@ -228,7 +266,7 @@ export class DashboardComponent {
 
 		if (this.todos.length === 0) {
 			lines.push("");
-			lines.push(dim("  No tasks yet. Use /todo to add items."));
+			lines.push(dim("  No tasks yet. Use /task to add items."));
 			return lines;
 		}
 
@@ -351,7 +389,7 @@ export class DashboardComponent {
 		lines.push(`    ${muted("Q / Esc")}    Close dashboard`);
 		lines.push("");
 		lines.push(`  ${bold("Tasks Tab")}`);
-		lines.push(`    ${muted("/todo [text]")} Add a task`);
+		lines.push(`    ${muted("/task [text]")} Add a task`);
 		lines.push(`    ${muted("/todo")}        Manage tasks`);
 		lines.push("");
 		lines.push(`  ${bold("Sessions Tab")}`);
@@ -371,7 +409,7 @@ export class DashboardComponent {
 		lines.push("");
 		lines.push(`  ${bold("Commands")}`);
 		lines.push(`    ${muted("/dashboard")}  Open this dashboard`);
-		lines.push(`    ${muted("/todo [text]")} Add a task`);
+		lines.push(`    ${muted("/task [text]")} Add a task`);
 		lines.push(`    ${muted("/todo")}        Manage tasks`);
 		lines.push(`    ${muted("/footer")}      Toggle custom footer`);
 		lines.push("");

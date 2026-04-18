@@ -1,11 +1,8 @@
 /**
  * Dashboard Extension - A TUI dashboard for pi
  *
- * Features:
- * - /dashboard - Multi-tab dashboard with session stats, git, and sessions
- * - /todo - Persistent todo list with widget
- * - /footer - Toggle custom footer
- * - Shortcuts: Ctrl+Shift+D (dashboard), Ctrl+Shift+T (todo widget)
+ * Commands: /dashboard, /task (or /todo), /footer
+ * Shortcuts: Ctrl+Shift+D (dashboard), Ctrl+Shift+T (task widget)
  */
 
 import type { AssistantMessage } from "@mariozechner/pi-ai";
@@ -28,7 +25,7 @@ const TODO_SAVE_TYPE = "dashboard-todos";
 export default function dashboardExtension(pi: ExtensionAPI) {
 	let todos: TodoItem[] = [];
 	let footerActive = false;
-	let todoWidgetVisible = true;
+	let taskWidgetVisible = true;
 
 	// ============================================================================
 	// Helpers
@@ -49,17 +46,17 @@ export default function dashboardExtension(pi: ExtensionAPI) {
 		pi.appendEntry(TODO_SAVE_TYPE, todos);
 	}
 
-	function updateTodoWidget(ctx: ExtensionContext): void {
-		if (!todoWidgetVisible || todos.length === 0) {
-			ctx.ui.setWidget("dashboard-todos", undefined);
+	function updateTaskWidget(ctx: ExtensionContext): void {
+		if (!taskWidgetVisible || todos.length === 0) {
+			ctx.ui.setWidget("dashboard-tasks", undefined);
 			return;
 		}
 
 		ctx.ui.setWidget(
-			"dashboard-todos",
+			"dashboard-tasks",
 			(_tui, theme) => {
 				const lines = [
-					theme.fg("accent", theme.bold("Todos")),
+					theme.fg("accent", theme.bold("Tasks")),
 					...todos.slice(0, 3).map((t) => {
 						const checkbox = t.done ? theme.fg("success", "✓") : theme.fg("dim", "○");
 						const text = t.done ? theme.fg("muted", t.text) : t.text;
@@ -76,6 +73,94 @@ export default function dashboardExtension(pi: ExtensionAPI) {
 			},
 			{ placement: "belowEditor" },
 		);
+	}
+
+	// Shared task handler for both /task and /todo
+	async function taskHandler(args: string, ctx: ExtensionContext): Promise<void> {
+		if (!ctx.hasUI) {
+			ctx.ui.notify("Task command requires interactive mode", "error");
+			return;
+		}
+
+		// Quick add
+		if (args?.trim()) {
+			todos.push({
+				id: Date.now().toString(),
+				text: args.trim(),
+				done: false,
+			});
+			saveTodos();
+			updateTaskWidget(ctx);
+			ctx.ui.notify(`Task added: ${args.trim()}`, "success");
+			return;
+		}
+
+		// Show task selector UI
+		const items: SelectItem[] = [
+			{ value: "add", label: "➕ Add new task", description: "Create a new task" },
+			...todos.map((t, i) => ({
+				value: String(i),
+				label: `${t.done ? "✓" : "○"} ${t.text}`,
+				description: t.done ? "Done - press to uncheck" : "Pending - press to complete",
+			})),
+		];
+
+		if (todos.length === 0) {
+			items.push({ value: "none", label: "No tasks yet", description: "Add your first task" });
+		}
+
+		const result = await ctx.ui.custom<string | null>((tui, theme, _kb, done) => {
+			const container = new Container();
+			container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
+			container.addChild(new Text(theme.fg("accent", theme.bold("Task List")), 1, 0));
+
+			const selectList = new SelectList(items, Math.min(items.length, 10), {
+				selectedPrefix: (t) => theme.fg("accent", t),
+				selectedText: (t) => theme.fg("accent", t),
+				description: (t) => theme.fg("muted", t),
+				scrollInfo: (t) => theme.fg("dim", t),
+				noMatch: (t) => theme.fg("warning", t),
+			});
+
+			selectList.onSelect = (item) => done(item.value);
+			selectList.onCancel = () => done(null);
+			container.addChild(selectList);
+			container.addChild(new Text(theme.fg("dim", "↑↓ navigate • enter select • esc close"), 1, 0));
+			container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
+
+			return {
+				render: (w) => container.render(w),
+				invalidate: () => container.invalidate(),
+				handleInput: (data) => {
+					selectList.handleInput(data);
+					tui.requestRender();
+				},
+			};
+		});
+
+		if (!result) return;
+
+		if (result === "add") {
+			const text = await ctx.ui.input("New task:", "");
+			if (text?.trim()) {
+				todos.push({
+					id: Date.now().toString(),
+					text: text.trim(),
+					done: false,
+				});
+				saveTodos();
+				updateTaskWidget(ctx);
+				ctx.ui.notify("Task added", "success");
+			}
+		} else if (result !== "none") {
+			const index = parseInt(result, 10);
+			if (todos[index]) {
+				todos[index].done = !todos[index].done;
+				saveTodos();
+				updateTaskWidget(ctx);
+				ctx.ui.notify(todos[index].done ? "Task completed" : "Task reopened", "info");
+			}
+		}
 	}
 
 	// ============================================================================
@@ -96,94 +181,14 @@ export default function dashboardExtension(pi: ExtensionAPI) {
 		},
 	});
 
+	pi.registerCommand("task", {
+		description: "Manage task list",
+		handler: taskHandler,
+	});
+
 	pi.registerCommand("todo", {
-		description: "Manage todo list",
-		handler: async (args, ctx) => {
-			if (!ctx.hasUI) {
-				ctx.ui.notify("Todo requires interactive mode", "error");
-				return;
-			}
-
-			// Quick add
-			if (args?.trim()) {
-				todos.push({
-					id: Date.now().toString(),
-					text: args.trim(),
-					done: false,
-				});
-				saveTodos();
-				updateTodoWidget(ctx);
-				ctx.ui.notify(`Added: ${args.trim()}`, "success");
-				return;
-			}
-
-			// Show todo selector UI
-			const items: SelectItem[] = [
-				{ value: "add", label: "➕ Add new todo", description: "Create a new todo item" },
-				...todos.map((t, i) => ({
-					value: String(i),
-					label: `${t.done ? "✓" : "○"} ${t.text}`,
-					description: t.done ? "Done - press to uncheck" : "Pending - press to complete",
-				})),
-			];
-
-			if (todos.length === 0) {
-				items.push({ value: "none", label: "No todos yet", description: "Add your first todo" });
-			}
-
-			const result = await ctx.ui.custom<string | null>((tui, theme, _kb, done) => {
-				const container = new Container();
-				container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
-				container.addChild(new Text(theme.fg("accent", theme.bold("Todo List")), 1, 0));
-
-				const selectList = new SelectList(items, Math.min(items.length, 10), {
-					selectedPrefix: (t) => theme.fg("accent", t),
-					selectedText: (t) => theme.fg("accent", t),
-					description: (t) => theme.fg("muted", t),
-					scrollInfo: (t) => theme.fg("dim", t),
-					noMatch: (t) => theme.fg("warning", t),
-				});
-
-				selectList.onSelect = (item) => done(item.value);
-				selectList.onCancel = () => done(null);
-				container.addChild(selectList);
-				container.addChild(new Text(theme.fg("dim", "↑↓ navigate • enter select • esc close"), 1, 0));
-				container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
-
-				return {
-					render: (w) => container.render(w),
-					invalidate: () => container.invalidate(),
-					handleInput: (data) => {
-						selectList.handleInput(data);
-						tui.requestRender();
-					},
-				};
-			});
-
-			if (!result) return;
-
-			if (result === "add") {
-				const text = await ctx.ui.input("New todo:", "");
-				if (text?.trim()) {
-					todos.push({
-						id: Date.now().toString(),
-						text: text.trim(),
-						done: false,
-					});
-					saveTodos();
-					updateTodoWidget(ctx);
-					ctx.ui.notify("Todo added", "success");
-				}
-			} else if (result !== "none") {
-				const index = parseInt(result, 10);
-				if (todos[index]) {
-					todos[index].done = !todos[index].done;
-					saveTodos();
-					updateTodoWidget(ctx);
-					ctx.ui.notify(todos[index].done ? "Marked as done" : "Marked as pending", "info");
-				}
-			}
-		},
+		description: "Manage task list (alias for /task)",
+		handler: taskHandler,
 	});
 
 	pi.registerCommand("footer", {
@@ -204,9 +209,7 @@ export default function dashboardExtension(pi: ExtensionAPI) {
 					dispose: unsub,
 					invalidate() {},
 					render(width: number): string[] {
-						let input = 0,
-							output = 0,
-							cost = 0;
+						let input = 0, output = 0, cost = 0;
 						for (const e of ctx.sessionManager.getBranch()) {
 							if (e.type === "message" && e.message.role === "assistant") {
 								const m = e.message as AssistantMessage;
@@ -220,9 +223,9 @@ export default function dashboardExtension(pi: ExtensionAPI) {
 						const fmt = (n: number) => (n < 1000 ? `${n}` : `${(n / 1000).toFixed(1)}k`);
 
 						const left = theme.fg("dim", `↑${fmt(input)} ↓${fmt(output)} $${cost.toFixed(3)}`);
-						const todoStatus = todos.length > 0 ? ` | ${todos.filter((t) => t.done).length}/${todos.length} ✓` : "";
+						const taskStatus = todos.length > 0 ? ` | ${todos.filter((t) => t.done).length}/${todos.length} ✓` : "";
 						const branchStr = branch ? ` (${branch})` : "";
-						const right = theme.fg("dim", `${ctx.model?.id || "no-model"}${branchStr}${todoStatus}`);
+						const right = theme.fg("dim", `${ctx.model?.id || "no-model"}${branchStr}${taskStatus}`);
 
 						const pad = " ".repeat(Math.max(1, width - visibleWidth(left) - visibleWidth(right)));
 						return [truncateToWidth(left + pad + right, width)];
@@ -245,11 +248,11 @@ export default function dashboardExtension(pi: ExtensionAPI) {
 	});
 
 	pi.registerShortcut(Key.ctrlShift("t"), {
-		description: "Toggle todo widget",
+		description: "Toggle task widget",
 		handler: async (ctx) => {
-			todoWidgetVisible = !todoWidgetVisible;
-			updateTodoWidget(ctx);
-			ctx.ui.notify(todoWidgetVisible ? "Todo widget visible" : "Todo widget hidden", "info");
+			taskWidgetVisible = !taskWidgetVisible;
+			updateTaskWidget(ctx);
+			ctx.ui.notify(taskWidgetVisible ? "Task widget visible" : "Task widget hidden", "info");
 		},
 	});
 
@@ -259,11 +262,11 @@ export default function dashboardExtension(pi: ExtensionAPI) {
 
 	pi.on("session_start", async (_event, ctx) => {
 		loadTodos(ctx);
-		updateTodoWidget(ctx);
-		ctx.ui.notify("Dashboard loaded • /dashboard /todo /footer • Ctrl+Shift+D", "info");
+		updateTaskWidget(ctx);
+		ctx.ui.notify("Dashboard loaded • /dashboard /task /footer • Ctrl+Shift+D", "info");
 	});
 
 	pi.on("turn_end", async (_event, ctx) => {
-		updateTodoWidget(ctx);
+		updateTaskWidget(ctx);
 	});
 }
