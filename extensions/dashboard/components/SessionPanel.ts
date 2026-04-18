@@ -109,7 +109,7 @@ export class SessionPanel {
     const totalCost = this.sessions.reduce((sum, s) => sum + s.cost, 0);
     const current = this.sessions.find((s) => s.isCurrent);
 
-    lines.push(`  ${bold(accent("Sessions:"))} ${muted(String(this.sessions.length))}`);
+    lines.push(`  ${bold(accent("Sessions"))} ${muted(String(this.sessions.length))} ${dim("(this repo)")}`);
     lines.push(`  ${bold("Total Tokens:")} ${muted(totalTokens.toLocaleString())}`);
     lines.push(`  ${bold("Total Cost:")} ${muted(`$${totalCost.toFixed(3)}`)}`);
     lines.push("");

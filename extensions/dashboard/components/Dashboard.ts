@@ -1,5 +1,7 @@
 /**
- * Dashboard Component - Main dashboard UI (Phase 04: Polished)
+ * Dashboard Component - Main dashboard UI
+ *
+ * Tabs: 1:Tasks  2:Sessions  3:Git  4:Brain  5:Info
  */
 
 import type { AssistantMessage } from "@mariozechner/pi-ai";
@@ -11,12 +13,11 @@ import { SessionPanel } from "./SessionPanel.js";
 import { BrainPanel } from "./BrainPanel.js";
 
 const TABS: { key: DashboardTab; label: string; shortcut: string }[] = [
-	{ key: "overview", label: "Overview", shortcut: "1" },
-	{ key: "todos", label: "Tasks", shortcut: "2" },
-	{ key: "stats", label: "Stats", shortcut: "3" },
-	{ key: "git", label: "Git", shortcut: "4" },
-	{ key: "sessions", label: "Sessions", shortcut: "5" },
-	{ key: "brain", label: "Brain", shortcut: "6" },
+	{ key: "tasks", label: "Tasks", shortcut: "1" },
+	{ key: "sessions", label: "Sessions", shortcut: "2" },
+	{ key: "git", label: "Git", shortcut: "3" },
+	{ key: "brain", label: "Brain", shortcut: "4" },
+	{ key: "info", label: "Info", shortcut: "5" },
 ];
 
 export class DashboardComponent {
@@ -24,7 +25,7 @@ export class DashboardComponent {
 	private onClose: () => void;
 	private tui: { requestRender: () => void };
 	private todos: TodoItem[];
-	private selectedTab: DashboardTab = "overview";
+	private selectedTab: DashboardTab = "tasks";
 	private showHelp = false;
 	private cachedLines: string[] = [];
 	private cachedWidth = 0;
@@ -61,7 +62,6 @@ export class DashboardComponent {
 	}
 
 	handleInput(data: string): void {
-		// Help overlay toggle
 		if (data === "?") {
 			this.showHelp = !this.showHelp;
 			this.invalidate();
@@ -69,7 +69,6 @@ export class DashboardComponent {
 			return;
 		}
 
-		// If help is showing, any key closes it
 		if (this.showHelp) {
 			this.showHelp = false;
 			this.invalidate();
@@ -77,13 +76,11 @@ export class DashboardComponent {
 			return;
 		}
 
-		// Exit on Escape or 'q'/'Q'
 		if (matchesKey(data, Key.escape) || data === "q" || data === "Q") {
 			this.onClose();
 			return;
 		}
 
-		// Arrow key navigation
 		if (matchesKey(data, Key.right)) {
 			const next = (this.tabIndex + 1) % TABS.length;
 			this.switchTab(TABS[next]!.key);
@@ -95,13 +92,11 @@ export class DashboardComponent {
 			return;
 		}
 
-		// Number key navigation
-		if (data === "1") return this.switchTab("overview");
-		if (data === "2") return this.switchTab("todos");
-		if (data === "3") return this.switchTab("stats");
-		if (data === "4") return this.switchTab("git");
-		if (data === "5") return this.switchTab("sessions");
-		if (data === "6") return this.switchTab("brain");
+		if (data === "1") return this.switchTab("tasks");
+		if (data === "2") return this.switchTab("sessions");
+		if (data === "3") return this.switchTab("git");
+		if (data === "4") return this.switchTab("brain");
+		if (data === "5") return this.switchTab("info");
 
 		// Tab-specific actions
 		if (this.selectedTab === "git") {
@@ -119,7 +114,6 @@ export class DashboardComponent {
 					this.brainPanel.handleAction("back");
 				}
 			} else {
-				// Number keys 0-9 to view files
 				const num = parseInt(data, 10);
 				if (!isNaN(num) && num >= 0) {
 					void this.brainPanel.viewFile(num);
@@ -147,42 +141,34 @@ export class DashboardComponent {
 
 		const theme = this.ctx.ui.theme;
 		const lines: string[] = [];
-
-		const accent = (s: string) => theme.fg("accent", s);
 		const dim = (s: string) => theme.fg("dim", s);
 
-		// Header
 		lines.push(this.renderHeader(theme, width));
 		lines.push(this.renderTabBar(theme, width));
 		lines.push(dim("─".repeat(width)));
 
-		// Content
 		if (this.showHelp) {
 			lines.push(...this.renderHelp(theme, width));
 		} else {
 			switch (this.selectedTab) {
-				case "overview":
-					lines.push(...this.renderOverview(width));
-					break;
-				case "todos":
-					lines.push(...this.renderTodos(width));
-					break;
-				case "stats":
-					lines.push(...this.renderStats(width));
-					break;
-				case "git":
-					lines.push(...this.gitPanel.render(theme, width));
+				case "tasks":
+					lines.push(...this.renderTasks(width));
 					break;
 				case "sessions":
 					lines.push(...this.sessionPanel.render(theme, width));
 					break;
+				case "git":
+					lines.push(...this.gitPanel.render(theme, width));
+					break;
 				case "brain":
 					lines.push(...this.brainPanel.render(theme, width));
+					break;
+				case "info":
+					lines.push(...this.renderInfo(width));
 					break;
 			}
 		}
 
-		// Footer
 		lines.push(dim("─".repeat(width)));
 		lines.push(this.renderFooter(theme, width));
 
@@ -204,7 +190,6 @@ export class DashboardComponent {
 			}
 			return theme.fg("dim", ` ${tab.shortcut}:${tab.label} `);
 		});
-
 		const separator = theme.fg("dim", "│");
 		const bar = tabParts.join(separator);
 		return this.centerLine(bar, width);
@@ -218,62 +203,55 @@ export class DashboardComponent {
 		}
 
 		const hints: Record<string, string> = {
-			overview: "←→ switch tabs • ? help • Q close",
-			todos: "←→ switch tabs • ? help • Q close",
-			stats: "←→ switch tabs • ? help • Q close",
-			git: "C-checkout • N-new • D-delete • S-stage • U-unstage • ? help",
+			tasks: "←→ tabs • ? help • Q close",
 			sessions: "S-switch • B-bookmark • ? help • Q close",
-		brain: "0-9 view file • B-back • ? help • Q close",
+			git: "C-checkout • N-new • D-delete • S-stage • U-unstage • ? help",
+			brain: "0-9 view file • B-back • ? help • Q close",
+			info: "←→ tabs • ? help • Q close",
 		};
 
 		return this.centerLine(dim(hints[this.selectedTab] ?? ""), width);
 	}
 
-	private renderHelp(theme: ReturnType<ExtensionContext["ui"]["theme"]>, width: number): string[] {
+	// ========================================================================
+	// Tab: Tasks (1)
+	// ========================================================================
+
+	private renderTasks(width: number): string[] {
+		const theme = this.ctx.ui.theme;
 		const lines: string[] = [];
 		const accent = (s: string) => theme.fg("accent", s);
 		const muted = (s: string) => theme.fg("muted", s);
 		const dim = (s: string) => theme.fg("dim", s);
+		const success = (s: string) => theme.fg("success", s);
 		const bold = (s: string) => theme.bold(s);
 
+		if (this.todos.length === 0) {
+			lines.push("");
+			lines.push(dim("  No tasks yet. Use /todo to add items."));
+			return lines;
+		}
+
+		const doneCount = this.todos.filter((t) => t.done).length;
+		lines.push(`  ${bold(accent("Tasks"))} ${dim("(")}${success(String(doneCount))}${dim("/")}${muted(String(this.todos.length))}${dim(" completed)")}`);
 		lines.push("");
-		lines.push(`  ${bold(accent("Keyboard Shortcuts"))}`);
-		lines.push("");
-		lines.push(`  ${bold("Navigation")}`);
-		lines.push(`    ${muted("1-6")}        Switch tab directly`);
-		lines.push(`    ${muted("← →")}        Switch tab (with wraparound)`);
-		lines.push(`    ${muted("?")}          Toggle this help`);
-		lines.push(`    ${muted("Q / Esc")}    Close dashboard`);
-		lines.push("");
-		lines.push(`  ${bold("Git Tab")}`);
-		lines.push(`    ${muted("C")}          Checkout branch`);
-		lines.push(`    ${muted("N")}          Create new branch`);
-		lines.push(`    ${muted("D")}          Delete branch`);
-		lines.push(`    ${muted("S")}          Stage file`);
-		lines.push(`    ${muted("U")}          Unstage file`);
-		lines.push("");
-		lines.push(`  ${bold("Sessions Tab")}`);
-		lines.push(`    ${muted("S")}          Switch to session`);
-		lines.push(`    ${muted("B")}          Toggle bookmark`);
-		lines.push("");
-		lines.push(`  ${bold("Brain Tab")}`);
-		lines.push(`    ${muted("0-9")}        View file by number`);
-		lines.push(`    ${muted("B")}          Back to file list`);
-		lines.push("");
-		lines.push(`  ${bold("Commands")}`);
-		lines.push(`    ${muted("/dashboard")}  Open this dashboard`);
-		lines.push(`    ${muted("/todo [text]")} Add a todo item`);
-		lines.push(`    ${muted("/todo")}        Manage todos`);
-		lines.push(`    ${muted("/footer")}      Toggle custom footer`);
-		lines.push("");
+
+		for (const todo of this.todos) {
+			const checkbox = todo.done ? success("✓") : dim("○");
+			const text = todo.done ? muted(todo.text) : todo.text;
+			lines.push(`    ${checkbox} ${text}`);
+		}
 
 		return lines;
 	}
 
-	private renderOverview(width: number): string[] {
+	// ========================================================================
+	// Tab: Info (5) — merged session + model + stats
+	// ========================================================================
+
+	private renderInfo(width: number): string[] {
 		const theme = this.ctx.ui.theme;
 		const lines: string[] = [];
-
 		const accent = (s: string) => theme.fg("accent", s);
 		const muted = (s: string) => theme.fg("muted", s);
 		const dim = (s: string) => theme.fg("dim", s);
@@ -306,53 +284,14 @@ export class DashboardComponent {
 		}
 		lines.push("");
 
-		// Todo summary
+		// Tasks summary
 		const doneCount = this.todos.filter((t) => t.done).length;
 		const totalCount = this.todos.length;
 		lines.push(`  ${bold(accent("Tasks"))}`);
 		lines.push(`    ${success(String(doneCount))}${dim("/")}${muted(String(totalCount))} completed`);
-
-		return lines;
-	}
-
-	private renderTodos(width: number): string[] {
-		const theme = this.ctx.ui.theme;
-		const lines: string[] = [];
-
-		const accent = (s: string) => theme.fg("accent", s);
-		const muted = (s: string) => theme.fg("muted", s);
-		const dim = (s: string) => theme.fg("dim", s);
-		const success = (s: string) => theme.fg("success", s);
-		const bold = (s: string) => theme.bold(s);
-
-		if (this.todos.length === 0) {
-			lines.push("");
-			lines.push(dim("  No todos yet. Use /todo to add items."));
-			return lines;
-		}
-
-		lines.push(`  ${bold(accent("Your Tasks"))}`);
 		lines.push("");
 
-		for (const todo of this.todos) {
-			const checkbox = todo.done ? success("✓") : dim("○");
-			const text = todo.done ? muted(todo.text) : todo.text;
-			lines.push(`    ${checkbox} ${text}`);
-		}
-
-		return lines;
-	}
-
-	private renderStats(width: number): string[] {
-		const theme = this.ctx.ui.theme;
-		const lines: string[] = [];
-
-		const accent = (s: string) => theme.fg("accent", s);
-		const muted = (s: string) => theme.fg("muted", s);
-		const dim = (s: string) => theme.fg("dim", s);
-		const bold = (s: string) => theme.bold(s);
-
-		// Calculate token usage
+		// Token usage (per-session)
 		let inputTokens = 0;
 		let outputTokens = 0;
 		let totalCost = 0;
@@ -368,12 +307,13 @@ export class DashboardComponent {
 
 		const fmt = (n: number) => (n < 1000 ? `${n}` : `${(n / 1000).toFixed(1)}k`);
 
-		lines.push(`  ${bold(accent("Token Usage"))}`);
+		lines.push(`  ${bold(accent("Token Usage"))} ${dim("(this session)")}`);
 		lines.push(`    Input:  ${muted(fmt(inputTokens))}`);
 		lines.push(`    Output: ${muted(fmt(outputTokens))}`);
 		lines.push(`    Total:  ${muted(fmt(inputTokens + outputTokens))}`);
 		lines.push("");
-		lines.push(`  ${bold(accent("Cost"))}`);
+
+		lines.push(`  ${bold(accent("Cost"))} ${dim("(this session)")}`);
 		lines.push(`    $${muted(totalCost.toFixed(4))}`);
 		lines.push("");
 
@@ -387,6 +327,54 @@ export class DashboardComponent {
 				lines.push(`    Limit: ${muted(fmt(usage.limit))} (${pct}%)`);
 			}
 		}
+
+		return lines;
+	}
+
+	// ========================================================================
+	// Help overlay
+	// ========================================================================
+
+	private renderHelp(theme: ReturnType<ExtensionContext["ui"]["theme"]>, _width: number): string[] {
+		const lines: string[] = [];
+		const accent = (s: string) => theme.fg("accent", s);
+		const muted = (s: string) => theme.fg("muted", s);
+		const bold = (s: string) => theme.bold(s);
+
+		lines.push("");
+		lines.push(`  ${bold(accent("Keyboard Shortcuts"))}`);
+		lines.push("");
+		lines.push(`  ${bold("Navigation")}`);
+		lines.push(`    ${muted("1-5")}        Switch tab directly`);
+		lines.push(`    ${muted("← →")}        Switch tab (with wraparound)`);
+		lines.push(`    ${muted("?")}          Toggle this help`);
+		lines.push(`    ${muted("Q / Esc")}    Close dashboard`);
+		lines.push("");
+		lines.push(`  ${bold("Tasks Tab")}`);
+		lines.push(`    ${muted("/todo [text]")} Add a task`);
+		lines.push(`    ${muted("/todo")}        Manage tasks`);
+		lines.push("");
+		lines.push(`  ${bold("Sessions Tab")}`);
+		lines.push(`    ${muted("S")}          Switch to session`);
+		lines.push(`    ${muted("B")}          Toggle bookmark`);
+		lines.push("");
+		lines.push(`  ${bold("Git Tab")}`);
+		lines.push(`    ${muted("C")}          Checkout branch`);
+		lines.push(`    ${muted("N")}          Create new branch`);
+		lines.push(`    ${muted("D")}          Delete branch`);
+		lines.push(`    ${muted("S")}          Stage file`);
+		lines.push(`    ${muted("U")}          Unstage file`);
+		lines.push("");
+		lines.push(`  ${bold("Brain Tab")}`);
+		lines.push(`    ${muted("0-9")}        View file by number`);
+		lines.push(`    ${muted("B")}          Back to file list`);
+		lines.push("");
+		lines.push(`  ${bold("Commands")}`);
+		lines.push(`    ${muted("/dashboard")}  Open this dashboard`);
+		lines.push(`    ${muted("/todo [text]")} Add a task`);
+		lines.push(`    ${muted("/todo")}        Manage tasks`);
+		lines.push(`    ${muted("/footer")}      Toggle custom footer`);
+		lines.push("");
 
 		return lines;
 	}
