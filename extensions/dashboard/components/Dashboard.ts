@@ -48,24 +48,24 @@ export class DashboardComponent {
 			return;
 		}
 
-		if (matchesKey(data, "1")) {
+		if (data === "1") {
 			this.selectedTab = "overview";
 			this.version++;
 			this.tui.requestRender();
-		} else if (matchesKey(data, "2")) {
+		} else if (data === "2") {
 			this.selectedTab = "todos";
 			this.version++;
 			this.tui.requestRender();
-		} else if (matchesKey(data, "3")) {
+		} else if (data === "3") {
 			this.selectedTab = "stats";
 			this.version++;
 			this.tui.requestRender();
-		} else if (matchesKey(data, "4")) {
+		} else if (data === "4") {
 			this.selectedTab = "git";
 			this.gitPanel.refresh();
 			this.version++;
 			this.tui.requestRender();
-		} else if (matchesKey(data, "5")) {
+		} else if (data === "5") {
 			this.selectedTab = "sessions";
 			void this.sessionPanel.refresh();
 			this.version++;
