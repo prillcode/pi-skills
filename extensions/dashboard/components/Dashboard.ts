@@ -176,6 +176,9 @@ export class DashboardComponent {
 				case "sessions":
 					lines.push(...this.sessionPanel.render(theme, width));
 					break;
+				case "brain":
+					lines.push(...this.brainPanel.render(theme, width));
+					break;
 			}
 		}
 
@@ -220,6 +223,7 @@ export class DashboardComponent {
 			stats: "←→ switch tabs • ? help • Q close",
 			git: "C-checkout • N-new • D-delete • S-stage • U-unstage • ? help",
 			sessions: "S-switch • B-bookmark • ? help • Q close",
+		brain: "0-9 view file • B-back • ? help • Q close",
 		};
 
 		return this.centerLine(dim(hints[this.selectedTab] ?? ""), width);
@@ -236,7 +240,7 @@ export class DashboardComponent {
 		lines.push(`  ${bold(accent("Keyboard Shortcuts"))}`);
 		lines.push("");
 		lines.push(`  ${bold("Navigation")}`);
-		lines.push(`    ${muted("1-5")}        Switch tab directly`);
+		lines.push(`    ${muted("1-6")}        Switch tab directly`);
 		lines.push(`    ${muted("← →")}        Switch tab (with wraparound)`);
 		lines.push(`    ${muted("?")}          Toggle this help`);
 		lines.push(`    ${muted("Q / Esc")}    Close dashboard`);
@@ -251,6 +255,10 @@ export class DashboardComponent {
 		lines.push(`  ${bold("Sessions Tab")}`);
 		lines.push(`    ${muted("S")}          Switch to session`);
 		lines.push(`    ${muted("B")}          Toggle bookmark`);
+		lines.push("");
+		lines.push(`  ${bold("Brain Tab")}`);
+		lines.push(`    ${muted("0-9")}        View file by number`);
+		lines.push(`    ${muted("B")}          Back to file list`);
 		lines.push("");
 		lines.push(`  ${bold("Commands")}`);
 		lines.push(`    ${muted("/dashboard")}  Open this dashboard`);
