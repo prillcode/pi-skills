@@ -134,7 +134,13 @@ export class DashboardComponent {
 		const entryCount = this.ctx.sessionManager.getEntries().length;
 
 		lines.push(bold(accent("Session")));
-		lines.push(`  File: ${muted(sessionFile)}`);
+		// Truncate session file path to fit within width (leaving room for "  File: " prefix)
+		const filePrefix = "  File: ";
+		const maxFileWidth = Math.max(20, width - visibleWidth(filePrefix));
+		const displayPath = sessionFile === "ephemeral" 
+			? sessionFile 
+			: truncateToWidth(sessionFile, maxFileWidth, "…");
+		lines.push(filePrefix + muted(displayPath));
 		lines.push(`  Entries: ${muted(String(entryCount))}`);
 		lines.push("");
 
