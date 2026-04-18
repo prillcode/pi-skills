@@ -17,7 +17,6 @@ export class DashboardComponent {
 	private selectedTab: DashboardTab = "overview";
 	private cachedLines: string[] = [];
 	private cachedWidth = 0;
-	private version = 0;
 	private gitPanel: GitPanel;
 	private sessionPanel: SessionPanel;
 
@@ -32,11 +31,11 @@ export class DashboardComponent {
 		this.onClose = onClose;
 		this.todos = todos;
 		this.gitPanel = new GitPanel(ctx, () => {
-			this.version++;
+			this.invalidate();
 			this.tui.requestRender();
 		});
 		this.sessionPanel = new SessionPanel(ctx, () => {
-			this.version++;
+			this.invalidate();
 			this.tui.requestRender();
 		});
 	}
@@ -50,25 +49,25 @@ export class DashboardComponent {
 
 		if (data === "1") {
 			this.selectedTab = "overview";
-			this.version++;
+			this.invalidate();
 			this.tui.requestRender();
 		} else if (data === "2") {
 			this.selectedTab = "todos";
-			this.version++;
+			this.invalidate();
 			this.tui.requestRender();
 		} else if (data === "3") {
 			this.selectedTab = "stats";
-			this.version++;
+			this.invalidate();
 			this.tui.requestRender();
 		} else if (data === "4") {
 			this.selectedTab = "git";
 			this.gitPanel.refresh();
-			this.version++;
+			this.invalidate();
 			this.tui.requestRender();
 		} else if (data === "5") {
 			this.selectedTab = "sessions";
 			void this.sessionPanel.refresh();
-			this.version++;
+			this.invalidate();
 			this.tui.requestRender();
 		} else if (this.selectedTab === "git") {
 			// Git panel actions
