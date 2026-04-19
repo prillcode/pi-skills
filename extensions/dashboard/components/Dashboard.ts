@@ -34,6 +34,7 @@ export class DashboardComponent {
 	#gitPanel: GitPanel;
 	#sessionPanel: SessionPanel;
 	#brainPanel: BrainPanel;
+	#saveTodos: () => void;
 
 	constructor(
 		tui: { requestRender: () => void },
@@ -41,12 +42,14 @@ export class DashboardComponent {
 		pi: ExtensionAPI,
 		onClose: () => void,
 		todos: TodoItem[],
+		saveTodos: () => void,
 	) {
 		this.#tui = tui;
 		this.#ctx = ctx;
 		this.#pi = pi;
 		this.#onClose = onClose;
 		this.#todos = todos;
+		this.#saveTodos = saveTodos;
 		this.#gitPanel = new GitPanel(ctx, () => {
 			this.invalidate();
 			this.#tui.requestRender();
@@ -215,6 +218,7 @@ export class DashboardComponent {
 			const text = await this.#ctx.ui.input("New task:", "");
 			if (!text?.trim()) return;
 			this.#todos.push({ id: Date.now().toString(), text: text.trim(), done: false });
+			this.#saveTodos();
 			this.invalidate();
 			this.#tui.requestRender();
 			this.#ctx.ui.notify(`Task added: ${text.trim()}`, "success");
