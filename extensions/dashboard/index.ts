@@ -176,7 +176,7 @@ export default function dashboardExtension(pi: ExtensionAPI) {
 			}
 
 			await ctx.ui.custom((tui, _theme, _kb, done) => {
-				return new DashboardComponent(tui, ctx, () => done(undefined), todos);
+				return new DashboardComponent(tui, ctx, pi, () => done(undefined), todos);
 			});
 		},
 	});
