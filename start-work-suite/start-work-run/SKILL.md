@@ -52,9 +52,11 @@ Discover all phase directories, then all `*PLAN.md` files within each phase, sor
 
 ### Path resolution
 
-If the target does not exist, try resolving relative to `.planning/`:
-- `.planning/<target>/` — look for work item directory
-- `.planning/<target>/phases/<phase>/` — look for phase directory
+If the target does not exist, try resolving relative to common planning roots first:
+- `.planning/<target>/`
+- `planning/<target>/`
+- `docs/planning/<target>/`
+Then fall back to searching any directory path containing `planning` and matching `<target>`.
 
 If the target is ambiguous (multiple matches), list the options and ask the user to choose.
 
@@ -67,7 +69,7 @@ Use bash as needed for:
 ```bash
 git status --short 2>/dev/null || true
 git branch --show-current 2>/dev/null || true
-find .planning -maxdepth 4 \( -name '*PLAN.md' -o -name 'EXECUTION.md' \) 2>/dev/null | sort
+find . -type f \( -name '*PLAN.md' -o -name 'EXECUTION.md' \) 2>/dev/null | grep planning | sort
 ```
 
 Read:

@@ -16,11 +16,11 @@ Do **not** force heavy planning for every task. Choose the lightest structure th
 
 ## Outcomes
 
-Depending on mode, create one of these:
+Depending on mode, create one of these (under the repo's chosen planning root, e.g. `.planning/` or `docs/planning/`):
 
 ### Full mode
 ```text
-.planning/<id>-<work-name>/
+<planning-root>/<id>-<work-name>/
   BRIEF.md
   ROADMAP.md
   phases/
@@ -116,11 +116,11 @@ Use bash to check:
 git rev-parse --git-dir 2>/dev/null || echo NO_GIT_REPO
 git branch --show-current 2>/dev/null || true
 git status --short 2>/dev/null || true
-find .planning -maxdepth 2 -type d 2>/dev/null | sort
+find . -type d 2>/dev/null | grep planning | sort
 ```
 
 Also determine:
-- whether `.planning/` exists
+- which planning root exists/preferred (`.planning/`, `planning/`, `docs/planning/`, or other `*planning*` path)
 - whether a matching work item already exists
 - whether the tree is dirty
 - whether the user is already on an appropriate branch

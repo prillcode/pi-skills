@@ -19,7 +19,7 @@ It should produce a plan that is:
 ## Responsibilities
 
 This skill should:
-- inspect an existing `.planning/<id>-<work-name>/` work item
+- inspect an existing planning work item (commonly `.planning/<id>-<work-name>/` or `docs/planning/<id>-<work-name>/`)
 - identify the phase or target needing expansion
 - create or refine a `PLAN.md` for that phase
 - keep plans appropriately sized
@@ -42,10 +42,10 @@ If the target is ambiguous, ask the user to choose.
 
 ## Context Scan
 
-Use bash to inspect the work item and existing planning files:
+Use bash to inspect the work item and existing planning files (support any directory path containing `planning`):
 
 ```bash
-find .planning -maxdepth 3 \( -name 'BRIEF.md' -o -name 'ROADMAP.md' -o -name '*PLAN.md' -o -name 'EXECUTION.md' \) 2>/dev/null | sort
+find . -type f \( -name 'BRIEF.md' -o -name 'ROADMAP.md' -o -name '*PLAN.md' -o -name 'EXECUTION.md' \) 2>/dev/null | grep planning | sort
 ```
 
 Read the relevant files before planning.
