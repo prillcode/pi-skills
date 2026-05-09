@@ -1,0 +1,15 @@
+{
+  "name": "openspec-pi",
+  "private": true,
+  "version": "0.2.0",
+  "type": "module",
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "scripts": {
+    "build": "echo 'nothing to build'",
+    "check": "echo 'reload in pi to validate the extension'"
+  }
+}
